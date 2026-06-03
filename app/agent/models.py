@@ -19,9 +19,20 @@ class ToolObservation:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class AgentTurn:
+    index: int
+    assistant_response: str
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    observations: list[ToolObservation] = field(default_factory=list)
+    final_content: str = ""
+    error: str | None = None
+
+
 @dataclass
 class AgentRunResult:
     final_payload: dict[str, Any]
     observations: list[ToolObservation] = field(default_factory=list)
+    turns: list[AgentTurn] = field(default_factory=list)
     turns_used: int = 0
     error: str | None = None

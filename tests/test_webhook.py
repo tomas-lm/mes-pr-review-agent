@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.github.webhooks import expected_signature
 from app.main import create_app
+from app.review.service import ReviewServiceResult
 from app.storage.runs import RunStore
 
 
@@ -16,8 +17,14 @@ def make_client() -> tuple[TestClient, RunStore]:
     app = create_app(
         settings=Settings(GITHUB_WEBHOOK_SECRET="test-secret"),
         run_store=store,
+        review_service=NoopReviewService(),
     )
     return TestClient(app), store
+
+
+class NoopReviewService:
+    async def run_for_pull_request(self, **_: Any) -> ReviewServiceResult:
+        return ReviewServiceResult(status="received")
 
 
 def signed_headers(payload: dict[str, Any], *, delivery_id: str = "delivery-1") -> dict[str, str]:

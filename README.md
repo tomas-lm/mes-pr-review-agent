@@ -32,6 +32,46 @@ Health check:
 curl http://127.0.0.1:8000/health
 ```
 
+## LLM / Kimi 2.6
+
+O loop agentico usa um cliente OpenAI-compatible. Para Kimi 2.6 via Telnyx:
+
+```text
+LLM_API_BASE_URL=https://api.telnyx.com/v2/ai
+LLM_MODEL=moonshotai/Kimi-K2.6
+LLM_API_KEY=<telnyx-api-key>
+AGENT_MAX_TURNS=12
+```
+
+Sem `LLM_API_KEY`, o webhook nao inventa revisao: ele registra a run como `NEEDS_HUMAN` e escreve a pendencia no Markdown da run.
+
+## Loop agentico
+
+O agente segue o protocolo inspirado no Model Garden:
+
+```xml
+<tool name="rewrite_state_prompt">
+{"state":"TRIAGE","state_prompt":"...","reason":"..."}
+</tool>
+```
+
+Resposta final:
+
+```xml
+<final>
+{"decision":"comment","summary":"...","findings":[],"trace_notes":[]}
+</final>
+```
+
+Tools iniciais:
+
+- `get_state_machine`: mostra estado atual e transicoes permitidas.
+- `rewrite_state_prompt`: reescreve a camada dinamica de estado do system prompt.
+- `append_review_observation`: registra observacoes e pendencias em Markdown.
+- `get_pr_metadata`: retorna metadados conhecidos do PR.
+
+As observacoes ficam em `review_runs/<run_id>.md` por padrao.
+
 ## Webhook local
 
 Para testar com GitHub App real, exponha a API local com ngrok ou smee e configure o webhook para:
@@ -63,7 +103,7 @@ Guia de configuracao: [docs/github_app_setup.md](docs/github_app_setup.md)
 
 ## Estado atual
 
-Implementado neste primeiro corte:
+Implementado:
 
 - API FastAPI.
 - `GET /health`.
@@ -71,4 +111,10 @@ Implementado neste primeiro corte:
 - Validacao HMAC SHA-256 via `X-Hub-Signature-256`.
 - Idempotencia por `X-GitHub-Delivery`.
 - Criacao de run em estado `RECEIVED`.
-- Esqueletos de Dynamic Prompt, state machine, loop agentico e schema de findings.
+- Dynamic System Prompt em camadas, inspirado na BAMAQ.
+- Maquina de estados dentro do proprio prompt.
+- Tool para reescrever a camada dinamica de estado.
+- Tool para escrever observacoes e pendencias em Markdown.
+- Loop agentico multi-turn inspirado no Model Garden.
+- Cliente LLM OpenAI-compatible configurado para Kimi 2.6/Telnyx.
+- Schema de findings.

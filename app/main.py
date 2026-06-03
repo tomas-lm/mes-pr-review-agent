@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.config import Settings, get_settings
 from app.github.webhooks import WebhookSignatureError, verify_webhook_signature
+from app.review.service import ReviewAgentService
 from app.storage.runs import RunStore
 
 SUPPORTED_PULL_REQUEST_ACTIONS = {"opened", "reopened", "synchronize", "ready_for_review"}
@@ -22,15 +23,23 @@ class WebhookResult(BaseModel):
     run_id: str | None = None
     state: str | None = None
     reason: str | None = None
+    notes_path: str | None = None
 
 
-def create_app(*, settings: Settings | None = None, run_store: RunStore | None = None) -> FastAPI:
+def create_app(
+    *,
+    settings: Settings | None = None,
+    run_store: RunStore | None = None,
+    review_service: ReviewAgentService | None = None,
+) -> FastAPI:
     resolved_settings = settings or get_settings()
     resolved_store = run_store or RunStore()
+    resolved_review_service = review_service or ReviewAgentService(settings=resolved_settings)
 
     app = FastAPI(title="MES PR Review Agent")
     app.state.settings = resolved_settings
     app.state.run_store = resolved_store
+    app.state.review_service = resolved_review_service
 
     @app.get("/health", response_model=HealthPayload)
     async def health() -> HealthPayload:
@@ -89,11 +98,17 @@ def create_app(*, settings: Settings | None = None, run_store: RunStore | None =
             head_sha=_head_sha(payload),
             installation_id=_installation_id(payload),
         )
+        review_result = await resolved_review_service.run_for_pull_request(
+            run=run,
+            payload=payload,
+        )
         return WebhookResult(
-            status="received",
+            status=review_result.status,
             delivery_id=delivery_id,
             run_id=run.run_id,
             state=run.state.value,
+            reason=review_result.error,
+            notes_path=review_result.notes_path,
         )
 
     return app

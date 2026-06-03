@@ -1,7 +1,12 @@
 from app.state_machine.states import ReviewState
 
 ALLOWED_TRANSITIONS: dict[ReviewState, set[ReviewState]] = {
-    ReviewState.RECEIVED: {ReviewState.TRIAGE, ReviewState.SKIPPED, ReviewState.ERROR},
+    ReviewState.RECEIVED: {
+        ReviewState.TRIAGE,
+        ReviewState.SKIPPED,
+        ReviewState.NEEDS_HUMAN,
+        ReviewState.ERROR,
+    },
     ReviewState.TRIAGE: {
         ReviewState.COLLECT_CONTEXT,
         ReviewState.SKIPPED,
@@ -33,7 +38,7 @@ ALLOWED_TRANSITIONS: dict[ReviewState, set[ReviewState]] = {
         ReviewState.NEEDS_HUMAN,
         ReviewState.ERROR,
     },
-    ReviewState.PUBLISH: {ReviewState.DONE, ReviewState.ERROR},
+    ReviewState.PUBLISH: {ReviewState.DONE, ReviewState.NEEDS_HUMAN, ReviewState.ERROR},
     ReviewState.DONE: set(),
     ReviewState.SKIPPED: set(),
     ReviewState.NEEDS_HUMAN: set(),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.prompts.default_layers import DEFAULT_PROMPT_LAYERS, PromptLayer
+from app.prompts.session import DynamicPromptSession
 from app.state_machine.states import ReviewState
 
 
@@ -21,3 +22,7 @@ def assemble_prompt(
         "Responda no final apenas com JSON valido contendo decision, summary e findings."
     )
     return "\n\n".join(sections)
+
+
+def assemble_dynamic_prompt(session: DynamicPromptSession) -> str:
+    return session.render_system_prompt()

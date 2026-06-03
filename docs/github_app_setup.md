@@ -67,6 +67,9 @@ Depois de criar o app:
 GITHUB_APP_ID=<app-id>
 GITHUB_APP_PRIVATE_KEY="<private-key-com-\\n-ou-multilinha>"
 GITHUB_WEBHOOK_SECRET=<mesmo-secret-configurado-no-github>
+LLM_API_BASE_URL=https://api.telnyx.com/v2/ai
+LLM_MODEL=moonshotai/Kimi-K2.6
+LLM_API_KEY=<telnyx-api-key>
 ```
 
 ## 5. Rodar local com tunnel
@@ -96,5 +99,6 @@ Instale o app no repo:
 tomas-lm/mes-pr-review-agent
 ```
 
-Depois abra um PR de teste. O webhook deve criar uma run em estado `RECEIVED`.
+Depois abra um PR de teste. O webhook deve criar uma run e iniciar o loop agentico.
 
+Se `LLM_API_KEY` nao estiver configurada, a run vai para `NEEDS_HUMAN` e o Markdown da run explica a pendencia.
