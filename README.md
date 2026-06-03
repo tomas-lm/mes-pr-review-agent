@@ -59,6 +59,8 @@ Permissoes minimas planejadas:
 
 O app deve usar installation access tokens, gerados a partir do `installation.id` recebido no webhook.
 
+Guia de configuracao: [docs/github_app_setup.md](docs/github_app_setup.md)
+
 ## Estado atual
 
 Implementado neste primeiro corte:
@@ -70,4 +72,3 @@ Implementado neste primeiro corte:
 - Idempotencia por `X-GitHub-Delivery`.
 - Criacao de run em estado `RECEIVED`.
 - Esqueletos de Dynamic Prompt, state machine, loop agentico e schema de findings.
-
