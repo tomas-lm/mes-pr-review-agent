@@ -76,7 +76,7 @@ def test_review_service_runs_agentic_loop_and_updates_prompt_state(tmp_path) -> 
             ]
         )
         service = ReviewAgentService(
-            settings=Settings(GITHUB_WEBHOOK_SECRET="test-secret"),
+            settings=Settings(_env_file=None, GITHUB_WEBHOOK_SECRET="test-secret"),
             model_client=fake_model,
             notes_dir=tmp_path,
         )
@@ -101,7 +101,7 @@ def test_review_service_runs_agentic_loop_and_updates_prompt_state(tmp_path) -> 
                 "inline_comments": 0,
                 "review_skipped": True,
                 "review_skip_reason": (
-                    "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are not configured"
+                    "GITHUB_APP_ID and GitHub App private key are not configured"
                 ),
                 "error": None,
             },
@@ -115,6 +115,15 @@ def test_review_service_runs_agentic_loop_and_updates_prompt_state(tmp_path) -> 
         assert "Coletar diff e arquivos alterados." in notes
         assert "Validador processou a resposta final do agente" in notes
         assert "Publicacao GitHub processada" in notes
+        assert "## Trace sanitizado" in notes
+        assert "- repositorio: `tomas-lm/mes-pr-review-agent`" in notes
+        assert "- pull_request: `7`" in notes
+        assert "- head_sha: `abc123`" in notes
+        assert "`RECEIVED` -> `TRIAGE`" in notes
+        assert "Turno 1: `get_state_machine` args=[]" in notes
+        assert "- findings_publicaveis: `0`" in notes
+        assert "- status: `skipped`" in notes
+        assert "<final>" not in notes
 
     anyio.run(run_test)
 
@@ -122,7 +131,7 @@ def test_review_service_runs_agentic_loop_and_updates_prompt_state(tmp_path) -> 
 def test_review_service_records_missing_llm_key_as_needs_human(tmp_path) -> None:
     async def run_test() -> None:
         service = ReviewAgentService(
-            settings=Settings(GITHUB_WEBHOOK_SECRET="test-secret"),
+            settings=Settings(_env_file=None, GITHUB_WEBHOOK_SECRET="test-secret"),
             notes_dir=tmp_path,
         )
         run = make_run()
@@ -133,6 +142,9 @@ def test_review_service_records_missing_llm_key_as_needs_human(tmp_path) -> None
         assert run.state == ReviewState.NEEDS_HUMAN
         notes = (tmp_path / "run-123.md").read_text(encoding="utf-8")
         assert "LLM_API_KEY ausente" in notes
+        assert "## Trace sanitizado" in notes
+        assert "- Loop nao executado." in notes
+        assert "- status_final: `needs_human`" in notes
 
     anyio.run(run_test)
 
@@ -140,7 +152,7 @@ def test_review_service_records_missing_llm_key_as_needs_human(tmp_path) -> None
 def test_review_service_returns_error_for_invalid_final_json(tmp_path) -> None:
     async def run_test() -> None:
         service = ReviewAgentService(
-            settings=Settings(GITHUB_WEBHOOK_SECRET="test-secret"),
+            settings=Settings(_env_file=None, GITHUB_WEBHOOK_SECRET="test-secret"),
             model_client=FakeModelClient(["<final>{bad json}</final>"]),
             notes_dir=tmp_path,
         )

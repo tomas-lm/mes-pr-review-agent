@@ -32,6 +32,32 @@ Health check:
 curl http://127.0.0.1:8000/health
 ```
 
+## Demo local com Docker
+
+Para o TP, o caminho recomendado e rodar tudo localmente com Docker e usar um
+tunnel temporario para o GitHub entregar webhooks:
+
+```bash
+cp .env.example .env
+mkdir -p secrets review_runs
+docker compose up --build
+```
+
+Depois abra um tunnel para a porta `8020`:
+
+```bash
+ngrok http 8020
+```
+
+Configure o webhook do GitHub App para:
+
+```text
+https://<tunnel>/webhooks/github
+```
+
+Guia completo: [docs/local_demo.md](docs/local_demo.md)
+Roteiro de apresentacao: [docs/demo_script.md](docs/demo_script.md)
+
 ## LLM / Kimi 2.6
 
 O loop agentico usa um cliente OpenAI-compatible. Para Kimi 2.6 via Telnyx:
@@ -72,7 +98,7 @@ Tools iniciais:
 
 As observacoes ficam em `review_runs/<run_id>.md` por padrao.
 
-## Webhook local
+## Webhook local sem Docker
 
 Para testar com GitHub App real, exponha a API local com ngrok ou smee e configure o webhook para:
 
@@ -100,6 +126,17 @@ Permissoes minimas planejadas:
 O app deve usar installation access tokens, gerados a partir do `installation.id` recebido no webhook.
 
 Guia de configuracao: [docs/github_app_setup.md](docs/github_app_setup.md)
+
+## Observabilidade da demo
+
+Cada run escreve um Markdown em `review_runs/<run_id>.md` com:
+
+- estado atual e camada dinamica do prompt;
+- observacoes registradas pelas tools;
+- trace sanitizado com repo, PR, head SHA, transicoes, tool calls, erros,
+  validacao e publicacao.
+
+O trace nao grava resposta bruta do modelo, installation token ou secrets.
 
 ## Estado atual
 

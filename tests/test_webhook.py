@@ -15,7 +15,7 @@ from app.storage.runs import RunStore
 def make_client() -> tuple[TestClient, RunStore]:
     store = RunStore()
     app = create_app(
-        settings=Settings(GITHUB_WEBHOOK_SECRET="test-secret"),
+        settings=Settings(_env_file=None, GITHUB_WEBHOOK_SECRET="test-secret"),
         run_store=store,
         review_service=NoopReviewService(),
     )

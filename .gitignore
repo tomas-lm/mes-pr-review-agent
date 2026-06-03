@@ -10,3 +10,6 @@ __pycache__/
 dist/
 build/
 review_runs/
+secrets/*.pem
+secrets/*.key
+secrets/*.txt

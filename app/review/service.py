@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from app.prompts.session import DynamicPromptSession
 from app.review.notes import ReviewNotesWriter
 from app.review.pr_context import build_pr_tool_context
 from app.review.publisher import PublicationResult, publish_validated_review, skipped_publication
+from app.review.trace import make_trace_snapshot, render_sanitized_trace
 from app.review.validator import validate_agent_review_payload
 from app.state_machine.states import ReviewState
 from app.storage.runs import ReviewRun
@@ -46,6 +48,7 @@ class ReviewAgentService:
         run: ReviewRun,
         payload: dict[str, Any],
     ) -> ReviewServiceResult:
+        started_at = datetime.now(UTC)
         runtime_context = _runtime_context_from_payload(run=run, payload=payload)
         prompt_session = DynamicPromptSession(
             run_id=run.run_id,
@@ -71,7 +74,15 @@ class ReviewAgentService:
                 message="LLM_API_KEY ausente; loop agentico nao foi chamado.",
                 todo="Configurar LLM_API_KEY com a chave Telnyx/Kimi antes do teste real.",
             )
-            notes_path = notes_writer.write(prompt_session)
+            trace_markdown = render_sanitized_trace(
+                run=run,
+                snapshot=make_trace_snapshot(
+                    started_at=started_at,
+                    final_status="needs_human",
+                    error="LLM_API_KEY is not configured",
+                ),
+            )
+            notes_path = notes_writer.write(prompt_session, trace_markdown=trace_markdown)
             return ReviewServiceResult(status="needs_human", notes_path=str(notes_path))
 
         github_client, github_unavailable_reason = await self._github_client_for_run(run)
@@ -114,6 +125,16 @@ class ReviewAgentService:
         if result.error:
             if run.state != ReviewState.ERROR:
                 _transition_run_to_terminal_error(run)
+            trace_markdown = render_sanitized_trace(
+                run=run,
+                snapshot=make_trace_snapshot(
+                    started_at=started_at,
+                    final_status="error",
+                    agent_result=result,
+                    error=result.error,
+                ),
+            )
+            notes_path = notes_writer.write(prompt_session, trace_markdown=trace_markdown)
             return ReviewServiceResult(
                 status="error",
                 notes_path=str(notes_path),
@@ -148,18 +169,30 @@ class ReviewAgentService:
         except Exception as exc:  # noqa: BLE001 - GitHub publication failure is terminal
             if run.state != ReviewState.ERROR:
                 _transition_run_to_terminal_error(run)
+            publication_result = PublicationResult(status="error", error=str(exc))
             prompt_session.append_observation(
                 category="publication",
                 message=f"Falha ao publicar resultado no GitHub: {exc}",
                 todo="Reexecutar a revisao depois de corrigir a integracao GitHub.",
             )
-            notes_path = notes_writer.write(prompt_session)
+            trace_markdown = render_sanitized_trace(
+                run=run,
+                snapshot=make_trace_snapshot(
+                    started_at=started_at,
+                    final_status="error",
+                    agent_result=result,
+                    validated_payload=validated_payload,
+                    publication_result=publication_result,
+                    error=str(exc),
+                ),
+            )
+            notes_path = notes_writer.write(prompt_session, trace_markdown=trace_markdown)
             return ReviewServiceResult(
                 status="error",
                 notes_path=str(notes_path),
                 final_payload={
                     **validated_payload.model_dump(mode="json"),
-                    "publication": PublicationResult(status="error", error=str(exc)).to_dict(),
+                    "publication": publication_result.to_dict(),
                 },
                 error=str(exc),
             )
@@ -178,7 +211,17 @@ class ReviewAgentService:
                 f"review_skipped={publication_result.review_skipped}",
             ],
         )
-        notes_path = notes_writer.write(prompt_session)
+        trace_markdown = render_sanitized_trace(
+            run=run,
+            snapshot=make_trace_snapshot(
+                started_at=started_at,
+                final_status="completed",
+                agent_result=result,
+                validated_payload=validated_payload,
+                publication_result=publication_result,
+            ),
+        )
+        notes_path = notes_writer.write(prompt_session, trace_markdown=trace_markdown)
         return ReviewServiceResult(
             status="completed",
             notes_path=str(notes_path),
@@ -219,15 +262,19 @@ class ReviewAgentService:
         self,
         run: ReviewRun,
     ) -> tuple[GitHubClient | None, str | None]:
-        if not (self.settings.github_app_id and self.settings.github_app_private_key):
+        try:
+            github_private_key = self.settings.github_private_key_value
+        except OSError as exc:
+            return None, f"could not read GITHUB_APP_PRIVATE_KEY_FILE: {exc}"
+        if not (self.settings.github_app_id and github_private_key):
             return (
                 None,
-                "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are not configured",
+                "GITHUB_APP_ID and GitHub App private key are not configured",
             )
         try:
             auth = GitHubAppAuth(
                 app_id=self.settings.github_app_id,
-                private_key=self.settings.github_app_private_key,
+                private_key=github_private_key,
                 api_base_url=self.settings.github_api_base_url,
             )
             token_data = await auth.create_installation_token(

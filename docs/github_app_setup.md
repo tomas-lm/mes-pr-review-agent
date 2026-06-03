@@ -61,28 +61,36 @@ Depois de criar o app:
 
 1. Gere uma private key.
 2. Copie o App ID.
-3. Configure o `.env`:
+3. Para Docker Compose, salve a chave em:
+
+```text
+secrets/github-app-private-key.pem
+```
+
+4. Configure o `.env`:
 
 ```text
 GITHUB_APP_ID=<app-id>
-GITHUB_APP_PRIVATE_KEY="<private-key-com-\\n-ou-multilinha>"
+GITHUB_APP_PRIVATE_KEY_FILE=/run/secrets/github-app-private-key.pem
 GITHUB_WEBHOOK_SECRET=<mesmo-secret-configurado-no-github>
 LLM_API_BASE_URL=https://api.telnyx.com/v2/ai
 LLM_MODEL=moonshotai/Kimi-K2.6
 LLM_API_KEY=<telnyx-api-key>
 ```
 
+Alternativa sem Docker: configure `GITHUB_APP_PRIVATE_KEY` com `\n` escapado ou
+valor multilinha aceito pelo seu shell.
+
 ## 5. Rodar local com tunnel
 
 ```bash
-uv sync
-uv run uvicorn app.main:app --reload
+docker compose up --build
 ```
 
 Em outro terminal:
 
 ```bash
-ngrok http 8000
+ngrok http 8020
 ```
 
 Use a URL HTTPS do ngrok como webhook URL do app:
