@@ -92,6 +92,56 @@ class GitHubClient:
             raise TypeError("GitHub check-runs endpoint did not return an object")
         return data
 
+    async def create_check_run(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        data = await self._post(f"/repos/{owner}/{repo}/check-runs", json=body)
+        if not isinstance(data, dict):
+            raise TypeError("GitHub create check run endpoint did not return an object")
+        return data
+
+    async def update_check_run(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        check_run_id: int,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        data = await self._patch(
+            f"/repos/{owner}/{repo}/check-runs/{check_run_id}",
+            json=body,
+        )
+        if not isinstance(data, dict):
+            raise TypeError("GitHub update check run endpoint did not return an object")
+        return data
+
+    async def list_pull_request_reviews(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        number: int,
+    ) -> list[dict[str, Any]]:
+        return await self._get_paginated_list(f"/repos/{owner}/{repo}/pulls/{number}/reviews")
+
+    async def create_pull_request_review(
+        self,
+        *,
+        owner: str,
+        repo: str,
+        number: int,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        data = await self._post(f"/repos/{owner}/{repo}/pulls/{number}/reviews", json=body)
+        if not isinstance(data, dict):
+            raise TypeError("GitHub create pull request review endpoint did not return an object")
+        return data
+
     async def _get(
         self,
         path: str,
@@ -108,6 +158,26 @@ class GitHubClient:
                     "Authorization": f"Bearer {self.token}",
                     "X-GitHub-Api-Version": GITHUB_API_VERSION,
                 },
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def _post(self, path: str, *, json: dict[str, Any]) -> Any:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(
+                f"{self.api_base_url}{path}",
+                headers=self._headers(),
+                json=json,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def _patch(self, path: str, *, json: dict[str, Any]) -> Any:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.patch(
+                f"{self.api_base_url}{path}",
+                headers=self._headers(),
+                json=json,
             )
             response.raise_for_status()
             return response.json()
@@ -135,3 +205,10 @@ class GitHubClient:
                 if len(data) < per_page or len(items) >= 3000:
                     return items
                 page += 1
+
+    def _headers(self, *, accept: str = "application/vnd.github+json") -> dict[str, str]:
+        return {
+            "Accept": accept,
+            "Authorization": f"Bearer {self.token}",
+            "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        }

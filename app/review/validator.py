@@ -194,7 +194,7 @@ def _derive_decision(
     attempted_findings: bool,
 ) -> tuple[ReviewDecision, CheckConclusion, PullRequestReviewEvent]:
     if raw_decision == ReviewDecision.SKIP:
-        return ReviewDecision.SKIP, CheckConclusion.NEUTRAL, PullRequestReviewEvent.COMMENT
+        return ReviewDecision.SKIP, CheckConclusion.SKIPPED, PullRequestReviewEvent.COMMENT
     has_blocking_finding = any(
         finding.severity in {FindingSeverity.CRITICAL, FindingSeverity.HIGH}
         for finding in publishable_findings

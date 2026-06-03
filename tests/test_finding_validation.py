@@ -211,3 +211,14 @@ def test_missing_evidence_is_discarded() -> None:
         assert result.discarded_findings[0].reason == DiscardReason.MISSING_EVIDENCE
 
     anyio.run(run_test)
+
+
+def test_skip_decision_maps_to_skipped_check_conclusion() -> None:
+    async def run_test() -> None:
+        result = await validate({"decision": "skip", "summary": "Draft PR", "findings": []})
+
+        assert result.decision == ReviewDecision.SKIP
+        assert result.check_conclusion == CheckConclusion.SKIPPED
+        assert result.review_event == PullRequestReviewEvent.COMMENT
+
+    anyio.run(run_test)

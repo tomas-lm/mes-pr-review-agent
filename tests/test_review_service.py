@@ -92,6 +92,19 @@ def test_review_service_runs_agentic_loop_and_updates_prompt_state(tmp_path) -> 
             "discarded_findings": [],
             "check_conclusion": "success",
             "review_event": "APPROVE",
+            "publication": {
+                "status": "skipped",
+                "check_run_id": None,
+                "check_run_url": None,
+                "review_id": None,
+                "review_url": None,
+                "inline_comments": 0,
+                "review_skipped": True,
+                "review_skip_reason": (
+                    "GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are not configured"
+                ),
+                "error": None,
+            },
         }
         assert run.state == ReviewState.TRIAGE
         assert len(fake_model.system_prompts) == 4
@@ -101,6 +114,7 @@ def test_review_service_runs_agentic_loop_and_updates_prompt_state(tmp_path) -> 
         assert "PR pequeno e elegivel para analise." in notes
         assert "Coletar diff e arquivos alterados." in notes
         assert "Validador processou a resposta final do agente" in notes
+        assert "Publicacao GitHub processada" in notes
 
     anyio.run(run_test)
 

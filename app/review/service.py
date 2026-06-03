@@ -13,6 +13,7 @@ from app.github.client import GitHubClient
 from app.prompts.session import DynamicPromptSession
 from app.review.notes import ReviewNotesWriter
 from app.review.pr_context import build_pr_tool_context
+from app.review.publisher import PublicationResult, publish_validated_review, skipped_publication
 from app.review.validator import validate_agent_review_payload
 from app.state_machine.states import ReviewState
 from app.storage.runs import ReviewRun
@@ -136,11 +137,55 @@ class ReviewAgentService:
                 f"review_event={validated_payload.review_event.value}",
             ],
         )
+        try:
+            publication_result = await self._publish_validated_payload(
+                github_client=github_client,
+                github_unavailable_reason=github_unavailable_reason,
+                pr_context=pr_context,
+                run=run,
+                validated_payload=validated_payload,
+            )
+        except Exception as exc:  # noqa: BLE001 - GitHub publication failure is terminal
+            if run.state != ReviewState.ERROR:
+                _transition_run_to_terminal_error(run)
+            prompt_session.append_observation(
+                category="publication",
+                message=f"Falha ao publicar resultado no GitHub: {exc}",
+                todo="Reexecutar a revisao depois de corrigir a integracao GitHub.",
+            )
+            notes_path = notes_writer.write(prompt_session)
+            return ReviewServiceResult(
+                status="error",
+                notes_path=str(notes_path),
+                final_payload={
+                    **validated_payload.model_dump(mode="json"),
+                    "publication": PublicationResult(status="error", error=str(exc)).to_dict(),
+                },
+                error=str(exc),
+            )
+        if publication_result.status == "published":
+            _transition_run_after_publication(run)
+        prompt_session.append_observation(
+            category="publication",
+            message=(
+                "Publicacao GitHub processada: "
+                f"status={publication_result.status}, "
+                f"check_run_id={publication_result.check_run_id}, "
+                f"review_id={publication_result.review_id}."
+            ),
+            evidence=[
+                f"inline_comments={publication_result.inline_comments}",
+                f"review_skipped={publication_result.review_skipped}",
+            ],
+        )
         notes_path = notes_writer.write(prompt_session)
         return ReviewServiceResult(
             status="completed",
             notes_path=str(notes_path),
-            final_payload=validated_payload.model_dump(mode="json"),
+            final_payload={
+                **validated_payload.model_dump(mode="json"),
+                "publication": publication_result.to_dict(),
+            },
         )
 
     def _model_client_from_settings(self) -> ModelClient | None:
@@ -150,6 +195,24 @@ class ReviewAgentService:
             api_key=self.settings.llm_api_key,
             base_url=self.settings.llm_api_base_url,
             model=self.settings.llm_model,
+        )
+
+    async def _publish_validated_payload(
+        self,
+        *,
+        github_client: GitHubClient | None,
+        github_unavailable_reason: str | None,
+        pr_context,
+        run: ReviewRun,
+        validated_payload,
+    ) -> PublicationResult:
+        if github_client is None:
+            return skipped_publication(github_unavailable_reason or "github_client_unavailable")
+        return await publish_validated_review(
+            client=github_client,
+            pr_context=pr_context,
+            run=run,
+            validated=validated_payload,
         )
 
     async def _github_client_for_run(
@@ -229,3 +292,12 @@ def _transition_run_to_terminal_error(run: ReviewRun) -> None:
         except ValueError:
             run.state = ReviewState.ERROR
             return
+
+
+def _transition_run_after_publication(run: ReviewRun) -> None:
+    if run.state == ReviewState.COMMENT_PLAN:
+        run.transition_to(ReviewState.PUBLISH, reason="publishing validated review")
+        run.transition_to(ReviewState.DONE, reason="published validated review")
+        return
+    if run.state == ReviewState.PUBLISH:
+        run.transition_to(ReviewState.DONE, reason="published validated review")

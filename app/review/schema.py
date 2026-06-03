@@ -31,6 +31,7 @@ class CheckConclusion(StrEnum):
     SUCCESS = "success"
     NEUTRAL = "neutral"
     FAILURE = "failure"
+    SKIPPED = "skipped"
 
 
 class PullRequestReviewEvent(StrEnum):
