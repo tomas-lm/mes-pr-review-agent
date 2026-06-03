@@ -158,4 +158,45 @@ def test_pr_context_tools_enforce_state_and_return_github_context(tmp_path) -> N
         assert file_at_ref.data["file"]["resolved_ref"] == "head-sha"
         assert file_at_ref.data["file"]["content"] == "content for app/review/service.py"
 
+        prompt_session.rewrite_state_layer(
+            target_state=ReviewState.EVALUATE,
+            state_prompt="Registrar candidatos de findings.",
+            reason="teste",
+        )
+        candidate = await registry.call(
+            "record_finding_candidate",
+            {
+                "severity": "high",
+                "confidence": 0.9,
+                "category": "bug",
+                "path": "app/review/service.py",
+                "line": 10,
+                "side": "RIGHT",
+                "title": "Bug candidate",
+                "body": "The added line can break behavior.",
+                "evidence": ["Line 10 is added in the diff."],
+            },
+        )
+        assert candidate.ok is True
+        assert candidate.data["candidate_count"] == 1
+
+        prompt_session.rewrite_state_layer(
+            target_state=ReviewState.VALIDATE_FINDINGS,
+            state_prompt="Validar linhas antes de publicar.",
+            reason="teste",
+        )
+        valid_line = await registry.call(
+            "validate_line_mapping",
+            {"path": "app/review/service.py", "line": 10, "side": "RIGHT"},
+        )
+        assert valid_line.ok is True
+        assert valid_line.data["valid"] is True
+
+        invalid_line = await registry.call(
+            "validate_line_mapping",
+            {"path": "app/review/service.py", "line": 99, "side": "RIGHT"},
+        )
+        assert invalid_line.ok is False
+        assert invalid_line.error == "line_not_in_diff"
+
     anyio.run(run_test)

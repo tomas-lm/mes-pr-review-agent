@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -17,6 +18,7 @@ MAX_LISTED_FILES = 100
 MAX_PATCH_CHARS = 12_000
 MAX_FILE_CHARS = 30_000
 MAX_RULE_CHARS = 12_000
+_HUNK_HEADER_RE = re.compile(r"^@@ -(?P<left>\d+)(?:,\d+)? \+(?P<right>\d+)(?:,\d+)? @@")
 
 
 class GitHubPRClient(Protocol):
@@ -228,6 +230,84 @@ class PullRequestToolContext:
             "check_runs": normalized,
         }
 
+    async def validate_line_mapping(
+        self,
+        *,
+        path: str,
+        line: int,
+        side: str,
+    ) -> dict[str, Any]:
+        self._ensure_available()
+        _validate_repo_path(path)
+        normalized_side = side.upper()
+        if normalized_side not in {"LEFT", "RIGHT"}:
+            return {
+                "valid": False,
+                "reason": "invalid_side",
+                "path": path,
+                "line": line,
+                "side": side,
+            }
+        if self._changed_files is None:
+            assert self.client is not None
+            self._changed_files = await self.client.list_pull_request_files(
+                owner=self.owner,
+                repo=self.repo,
+                number=self.number,
+            )
+        changed_file = next(
+            (
+                item
+                for item in self._changed_files
+                if item.get("filename") == path or item.get("previous_filename") == path
+            ),
+            None,
+        )
+        if changed_file is None:
+            return {
+                "valid": False,
+                "reason": "path_not_in_pr",
+                "path": path,
+                "line": line,
+                "side": normalized_side,
+            }
+        patch = changed_file.get("patch")
+        if not isinstance(patch, str) or not patch.strip():
+            return {
+                "valid": False,
+                "reason": "line_not_in_diff",
+                "path": path,
+                "line": line,
+                "side": normalized_side,
+            }
+        line_map = _changed_lines_by_side(patch)
+        side_lines = line_map[normalized_side]
+        context_lines = line_map[f"{normalized_side}_CONTEXT"]
+        if line in side_lines:
+            return {
+                "valid": True,
+                "reason": "ok",
+                "path": path,
+                "line": line,
+                "side": normalized_side,
+                "changed": True,
+            }
+        if line in context_lines:
+            return {
+                "valid": False,
+                "reason": "line_not_changed",
+                "path": path,
+                "line": line,
+                "side": normalized_side,
+            }
+        return {
+            "valid": False,
+            "reason": "line_not_in_diff",
+            "path": path,
+            "line": line,
+            "side": normalized_side,
+        }
+
     def resolve_ref(self, ref: str) -> str:
         normalized = ref.strip()
         if normalized in {"head", "HEAD", "right", "RIGHT"}:
@@ -325,6 +405,40 @@ def _extract_hunks(patch: str, *, max_patch_chars: int) -> list[dict[str, str]]:
             body = body[:max_patch_chars]
         hunks.append({"header": current_header, "patch": body})
     return hunks
+
+
+def _changed_lines_by_side(patch: str) -> dict[str, set[int]]:
+    lines: dict[str, set[int]] = {
+        "LEFT": set(),
+        "RIGHT": set(),
+        "LEFT_CONTEXT": set(),
+        "RIGHT_CONTEXT": set(),
+    }
+    left_line: int | None = None
+    right_line: int | None = None
+    for raw_line in patch.splitlines():
+        header = _HUNK_HEADER_RE.match(raw_line)
+        if header:
+            left_line = int(header.group("left"))
+            right_line = int(header.group("right"))
+            continue
+        if left_line is None or right_line is None:
+            continue
+        if raw_line.startswith("\\"):
+            continue
+        if raw_line.startswith("+"):
+            lines["RIGHT"].add(right_line)
+            right_line += 1
+            continue
+        if raw_line.startswith("-"):
+            lines["LEFT"].add(left_line)
+            left_line += 1
+            continue
+        lines["LEFT_CONTEXT"].add(left_line)
+        lines["RIGHT_CONTEXT"].add(right_line)
+        left_line += 1
+        right_line += 1
+    return lines
 
 
 def _validate_repo_path(path: str) -> None:

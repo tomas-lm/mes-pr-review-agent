@@ -161,6 +161,17 @@ Use tools quando precisar agir no ciclo agentico:
 9. get_ci_status
    - Consulta check runs atuais do commit head.
    - Use em COLLECT_CONTEXT, INVESTIGATE ou VALIDATE_FINDINGS.
+
+10. record_finding_candidate
+   - Registra um finding candidato em Markdown/runtime context, sem publicar.
+   - Argumentos: severity, confidence, category, path, line, side, title, body,
+     evidence, suggested_fix.
+   - Use em EVALUATE quando houver evidencia concreta.
+
+11. validate_line_mapping
+   - Confirma se path/line/side apontam para uma linha realmente alterada no diff.
+   - Argumentos: path, line, side.
+   - Use em VALIDATE_FINDINGS antes de incluir um finding no JSON final.
 """.strip()
 
 
@@ -188,4 +199,7 @@ Quando tiver informacao suficiente, responda somente com:
   "trace_notes": ["Resumo tecnico sem raciocinio interno"]
 }
 </final>
+
+O backend validara esse JSON antes de publicar. Findings sem evidencia concreta, linha
+alterada valida ou confianca suficiente serao descartados.
 """.strip()

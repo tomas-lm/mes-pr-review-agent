@@ -86,10 +86,12 @@ def test_review_service_runs_agentic_loop_and_updates_prompt_state(tmp_path) -> 
 
         assert result.status == "completed"
         assert result.final_payload == {
-            "decision": "comment",
-            "summary": "Triagem inicial concluida.",
-            "findings": [],
-            "trace_notes": ["Estado TRIAGE registrado."],
+            "decision": "approve",
+            "publishable_findings": [],
+            "summary_findings": [],
+            "discarded_findings": [],
+            "check_conclusion": "success",
+            "review_event": "APPROVE",
         }
         assert run.state == ReviewState.TRIAGE
         assert len(fake_model.system_prompts) == 4
@@ -98,6 +100,7 @@ def test_review_service_runs_agentic_loop_and_updates_prompt_state(tmp_path) -> 
         notes = (tmp_path / "run-123.md").read_text(encoding="utf-8")
         assert "PR pequeno e elegivel para analise." in notes
         assert "Coletar diff e arquivos alterados." in notes
+        assert "Validador processou a resposta final do agente" in notes
 
     anyio.run(run_test)
 
@@ -116,5 +119,24 @@ def test_review_service_records_missing_llm_key_as_needs_human(tmp_path) -> None
         assert run.state == ReviewState.NEEDS_HUMAN
         notes = (tmp_path / "run-123.md").read_text(encoding="utf-8")
         assert "LLM_API_KEY ausente" in notes
+
+    anyio.run(run_test)
+
+
+def test_review_service_returns_error_for_invalid_final_json(tmp_path) -> None:
+    async def run_test() -> None:
+        service = ReviewAgentService(
+            settings=Settings(GITHUB_WEBHOOK_SECRET="test-secret"),
+            model_client=FakeModelClient(["<final>{bad json}</final>"]),
+            notes_dir=tmp_path,
+        )
+        run = make_run()
+
+        result = await service.run_for_pull_request(run=run, payload=pr_payload())
+
+        assert result.status == "error"
+        assert result.error is not None
+        assert "final answer is not valid JSON" in result.error
+        assert run.state == ReviewState.ERROR
 
     anyio.run(run_test)

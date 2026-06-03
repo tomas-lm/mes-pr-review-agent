@@ -13,6 +13,7 @@ from app.github.client import GitHubClient
 from app.prompts.session import DynamicPromptSession
 from app.review.notes import ReviewNotesWriter
 from app.review.pr_context import build_pr_tool_context
+from app.review.validator import validate_agent_review_payload
 from app.state_machine.states import ReviewState
 from app.storage.runs import ReviewRun
 from app.tools.review_tools import build_review_tool_registry
@@ -117,10 +118,29 @@ class ReviewAgentService:
                 notes_path=str(notes_path),
                 error=result.error,
             )
+        validated_payload = await validate_agent_review_payload(
+            result.final_payload,
+            pr_context=pr_context,
+        )
+        prompt_session.append_observation(
+            category="validation",
+            message=(
+                "Validador processou a resposta final do agente: "
+                f"{len(validated_payload.publishable_findings)} publicaveis, "
+                f"{len(validated_payload.summary_findings)} para resumo, "
+                f"{len(validated_payload.discarded_findings)} descartados."
+            ),
+            evidence=[
+                f"decision={validated_payload.decision.value}",
+                f"check_conclusion={validated_payload.check_conclusion.value}",
+                f"review_event={validated_payload.review_event.value}",
+            ],
+        )
+        notes_path = notes_writer.write(prompt_session)
         return ReviewServiceResult(
             status="completed",
             notes_path=str(notes_path),
-            final_payload=result.final_payload,
+            final_payload=validated_payload.model_dump(mode="json"),
         )
 
     def _model_client_from_settings(self) -> ModelClient | None:

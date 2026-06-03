@@ -6,6 +6,7 @@ from app.agent.models import ToolObservation
 from app.prompts.session import DynamicPromptSession
 from app.review.notes import ReviewNotesWriter
 from app.review.pr_context import PullRequestToolContext
+from app.review.schema import ReviewFinding
 from app.state_machine.states import ReviewState
 from app.state_machine.transitions import ALLOWED_TRANSITIONS
 from app.storage.runs import ReviewRun
@@ -266,6 +267,73 @@ def build_review_tool_registry(
         except Exception as exc:  # noqa: BLE001 - tool errors are model observations
             return _tool_failure("get_ci_status", exc)
 
+    def record_finding_candidate(arguments: dict[str, object]) -> ToolObservation:
+        if denied := _require_state(
+            prompt_session,
+            "record_finding_candidate",
+            {ReviewState.EVALUATE},
+        ):
+            return denied
+        try:
+            finding = ReviewFinding.model_validate(arguments)
+            candidates = prompt_session.runtime_context.setdefault("finding_candidates", [])
+            if not isinstance(candidates, list):
+                raise ValueError("finding_candidates runtime context must be a list")
+            candidates.append(finding.model_dump(mode="json"))
+            prompt_session.append_observation(
+                category="finding_candidate",
+                message=f"{finding.severity.value} candidate recorded: {finding.title}",
+                evidence=finding.evidence,
+                todo="Validate path, line and side before publication.",
+            )
+            notes_path = notes_writer.write(prompt_session)
+            return ToolObservation(
+                tool_name="record_finding_candidate",
+                ok=True,
+                content=f"finding candidate recorded. Notes updated at {notes_path}",
+                data={
+                    "ok": True,
+                    "summary": "finding candidate recorded",
+                    "source": "runtime_context",
+                    "truncated": False,
+                    "candidate_count": len(candidates),
+                    "finding": finding.model_dump(mode="json"),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - tool errors are model observations
+            return _tool_failure("record_finding_candidate", exc)
+
+    async def validate_line_mapping(arguments: dict[str, object]) -> ToolObservation:
+        if denied := _require_state(
+            prompt_session,
+            "validate_line_mapping",
+            {ReviewState.VALIDATE_FINDINGS},
+        ):
+            return denied
+        try:
+            path = str(arguments.get("path") or "").strip()
+            line = _bounded_int(arguments.get("line"), default=0, maximum=1_000_000, minimum=0)
+            side = str(arguments.get("side") or "").strip().upper()
+            data = await pr_context.validate_line_mapping(path=path, line=line, side=side)
+            return ToolObservation(
+                tool_name="validate_line_mapping",
+                ok=bool(data.get("valid")),
+                content=(
+                    f"line mapping {'valid' if data.get('valid') else 'invalid'}: "
+                    f"{path}:{line} {side} ({data.get('reason')})"
+                ),
+                data={
+                    "ok": bool(data.get("valid")),
+                    "summary": f"line mapping result for {path}:{line} {side}",
+                    "source": "github_api_cache",
+                    "truncated": False,
+                    **data,
+                },
+                error=None if data.get("valid") else str(data.get("reason")),
+            )
+        except Exception as exc:  # noqa: BLE001 - tool errors are model observations
+            return _tool_failure("validate_line_mapping", exc)
+
     registry.register("rewrite_state_prompt", rewrite_state_prompt)
     registry.register("append_review_observation", append_review_observation)
     registry.register("get_pr_metadata", get_pr_metadata)
@@ -275,6 +343,8 @@ def build_review_tool_registry(
     registry.register("read_file_at_ref", read_file_at_ref)
     registry.register("read_repo_rules", read_repo_rules)
     registry.register("get_ci_status", get_ci_status)
+    registry.register("record_finding_candidate", record_finding_candidate)
+    registry.register("validate_line_mapping", validate_line_mapping)
     return registry
 
 
