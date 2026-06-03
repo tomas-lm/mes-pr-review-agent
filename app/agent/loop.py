@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import inspect
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 from app.agent.models import AgentRunResult, AgentTurn, ToolObservation
@@ -13,7 +14,7 @@ class ModelClient(Protocol):
         """Return raw model text."""
 
 
-ToolExecutor = Callable[[str, dict[str, object]], ToolObservation]
+ToolExecutor = Callable[[str, dict[str, object]], ToolObservation | Awaitable[ToolObservation]]
 SystemPromptProvider = str | Callable[[], str]
 
 
@@ -88,7 +89,12 @@ class AgenticLoop:
                             error=error,
                         )
                     seen_tool_calls.add(key)
-                    observation = self.tool_executor(tool_call.name, tool_call.arguments)
+                    maybe_observation = self.tool_executor(tool_call.name, tool_call.arguments)
+                    observation = (
+                        await maybe_observation
+                        if inspect.isawaitable(maybe_observation)
+                        else maybe_observation
+                    )
                     observations.append(observation)
                     turn_observations.append(observation)
                 turns.append(

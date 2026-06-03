@@ -6,6 +6,8 @@ from typing import Any
 import httpx
 import jwt
 
+from app.github.client import GITHUB_API_VERSION
+
 
 def normalize_private_key(private_key: str) -> str:
     return private_key.replace("\\n", "\n").strip()
@@ -50,7 +52,7 @@ class GitHubAppAuth:
                 headers={
                     "Accept": "application/vnd.github+json",
                     "Authorization": f"Bearer {token}",
-                    "X-GitHub-Api-Version": "2022-11-28",
+                    "X-GitHub-Api-Version": GITHUB_API_VERSION,
                 },
                 json=body,
             )

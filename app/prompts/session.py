@@ -137,6 +137,30 @@ Use tools quando precisar agir no ciclo agentico:
 
 4. get_state_machine
    - Consulta o estado atual e transicoes permitidas.
+
+5. list_changed_files
+   - Lista arquivos alterados do PR via GitHub API.
+   - Argumentos opcionais: max_files.
+   - Use apenas em COLLECT_CONTEXT ou INVESTIGATE.
+
+6. get_diff_hunks
+   - Retorna hunks de diff para todos os arquivos ou um path especifico.
+   - Argumentos opcionais: path, max_files, max_patch_chars.
+   - Use para coletar evidencia concreta antes de criar findings.
+
+7. read_file_at_ref
+   - Le um arquivo no ref `head`, `base` ou SHA/ref explicito.
+   - Argumentos: path, ref. Argumento opcional: max_chars.
+   - Use em INVESTIGATE para comparar contexto ao redor do diff.
+
+8. read_repo_rules
+   - Le README, CONTRIBUTING e arquivos `.github` relevantes.
+   - Argumentos opcionais: paths, ref.
+   - Use em COLLECT_CONTEXT antes de avaliar regras do repo.
+
+9. get_ci_status
+   - Consulta check runs atuais do commit head.
+   - Use em COLLECT_CONTEXT, INVESTIGATE ou VALIDATE_FINDINGS.
 """.strip()
 
 

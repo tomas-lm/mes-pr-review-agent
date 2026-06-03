@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+import inspect
+from collections.abc import Awaitable, Callable
 
 from app.agent.models import ToolObservation
 
-ToolHandler = Callable[[dict[str, object]], ToolObservation]
+ToolHandler = Callable[[dict[str, object]], ToolObservation | Awaitable[ToolObservation]]
 
 
 class ToolRegistry:
@@ -14,7 +15,7 @@ class ToolRegistry:
     def register(self, name: str, handler: ToolHandler) -> None:
         self._handlers[name] = handler
 
-    def call(self, name: str, arguments: dict[str, object]) -> ToolObservation:
+    async def call(self, name: str, arguments: dict[str, object]) -> ToolObservation:
         handler = self._handlers.get(name)
         if handler is None:
             return ToolObservation(
@@ -23,4 +24,7 @@ class ToolRegistry:
                 content=f"unknown tool: {name}",
                 error="unknown tool",
             )
-        return handler(arguments)
+        observation = handler(arguments)
+        if inspect.isawaitable(observation):
+            return await observation
+        return observation
