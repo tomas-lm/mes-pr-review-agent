@@ -2,12 +2,12 @@
 """
 FASE 2 -- Motor de Mocking e Execução (Integration Test)
 =========================================================
-Itera sobre golden_dataset_mes.json, instancia o agente completo
+Itera sobre mes_filtered_dataset.json, instancia o agente completo
 com todas as ferramentas reais mas GitHub mockado, e persiste os
 metadados de cada run em eval/results/run_results.jsonl.
 
 Pré-requisitos:
-  1. Fase 1 concluída: eval/golden_dataset_mes.json existe.
+  1. Dataset gerado: python eval/build_dataset.py
   2. LLM_API_KEY configurado em .env (ou env var).
 
 Uso:
@@ -48,7 +48,7 @@ from app.tools.review_tools import build_review_tool_registry
 # Caminhos
 # ---------------------------------------------------------------------------
 EVAL_DIR = Path(__file__).parent
-DATASET_PATH = EVAL_DIR / "golden_dataset_mes.json"
+DATASET_PATH = EVAL_DIR / "mes_filtered_dataset.json"
 RESULTS_DIR = EVAL_DIR / "results"
 RESULTS_PATH = RESULTS_DIR / "run_results.jsonl"
 NOTES_DIR = EVAL_DIR / "review_runs"
@@ -137,12 +137,16 @@ class MockGitHubPRClient:
         self.patch_text: str = item.get("patch", "")
         self.oldf: str = item.get("oldf", "")
         self.head_content: str = apply_unified_diff(self.oldf, self.patch_text)
+        self.repo_rules: str | None = item.get("repo_rules")
 
         # Contagem básica de adições/deleções no patch
         add = sum(1 for ln in self.patch_text.splitlines() if ln.startswith("+") and not ln.startswith("+++"))
         rem = sum(1 for ln in self.patch_text.splitlines() if ln.startswith("-") and not ln.startswith("---"))
         self._additions = add
         self._deletions = rem
+
+    # Caminho virtual que representa as regras do repositório no mock
+    _RULES_PATH = "CONTRIBUTING.md"
 
     async def list_pull_request_files(
         self, *, owner: str, repo: str, number: int
@@ -165,6 +169,17 @@ class MockGitHubPRClient:
     async def get_file_contents_at_ref(
         self, *, owner: str, repo: str, path: str, ref: str
     ) -> dict[str, Any]:
+        # Retorna repo_rules quando o agente solicita CONTRIBUTING.md
+        if path == self._RULES_PATH and self.repo_rules:
+            content = self.repo_rules
+            return {
+                "content": content,
+                "path": path,
+                "sha": "mock-rules-sha",
+                "size": len(content),
+                "encoding": "utf-8",
+            }
+
         if path != self.fake_path:
             raise FileNotFoundError(f"[mock] arquivo não existe neste PR: {path}")
 
@@ -191,17 +206,15 @@ class MockGitHubPRClient:
 def _build_pr_payload(item: dict[str, Any], item_index: int) -> dict[str, Any]:
     """Cria o webhook payload sintético que alimenta get_pr_metadata."""
     item_id = item.get("id", f"item_{item_index}")
+    title = item.get("pr_title") or f"[eval] item {item_id} -- lang={item.get('lang', 'py')}"
+    body  = item.get("pr_body")  or "Automated evaluation run for MES PR Reviewer."
     return {
         "action": "opened",
         "repository": {"full_name": "eval/mock-repo"},
         "pull_request": {
             "number": item_index + 1,
-            "title": f"[eval] item {item_id} -- lang={item.get('lang','py')}",
-            "body": (
-                "Automated evaluation run for MES PR Reviewer.\n"
-                f"Dataset item: {item_id}  |  y={item.get('y')}  |  "
-                f"synthetic={item.get('synthetic', False)}"
-            ),
+            "title": title,
+            "body": body,
             "draft": False,
             "head": {"sha": MOCK_HEAD_SHA, "ref": "feature/eval-branch"},
             "base": {"sha": MOCK_BASE_SHA, "ref": "main"},
@@ -354,8 +367,8 @@ async def main(args: argparse.Namespace) -> None:
 
     # Verificações iniciais
     if not DATASET_PATH.exists():
-        print(f"[ERRO] golden_dataset_mes.json não encontrado em {DATASET_PATH}", file=sys.stderr)
-        print("  Execute a Fase 1 primeiro: python eval/phase1_data_prep.py", file=sys.stderr)
+        print(f"[ERRO] mes_filtered_dataset.json não encontrado em {DATASET_PATH}", file=sys.stderr)
+        print("  Gere o dataset primeiro: python eval/build_dataset.py", file=sys.stderr)
         sys.exit(1)
 
     with DATASET_PATH.open(encoding="utf-8") as fh:

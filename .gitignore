@@ -10,6 +10,15 @@ __pycache__/
 dist/
 build/
 review_runs/
+
+# Dataset bruto (grande, nao versionado)
+msg-test.jsonl
+msg-valid.jsonl
+
+# Artefatos gerados pelo pipeline de avaliacao
+eval/results/
+eval/review_runs/
+
 secrets/*.pem
 secrets/*.key
 secrets/*.txt

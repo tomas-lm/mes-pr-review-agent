@@ -13,10 +13,12 @@ GitHub: todas as chamadas de API são interceptadas por um mock que injeta dados
 mes-pr-review-agent/
 └── eval/
     ├── __init__.py
-    ├── phase1_data_prep.py      # Fase 1: prepara o dataset
+    ├── build_dataset.py         # Dataset avancado (py+js, filtros extras)
+    ├── phase1_data_prep.py      # Dataset basico (apenas py, legado)
     ├── phase2_mock_runner.py    # Fase 2: executa o agente com mock
-    ├── phase3_metrics.py        # Fase 3: calcula métricas e LaTeX
-    ├── golden_dataset_mes.json  # Criado pela Fase 1
+    ├── phase3_metrics.py        # Fase 3: calcula metricas e LaTeX
+    ├── mes_filtered_dataset.json # Criado por build_dataset.py
+    ├── golden_dataset_mes.json  # Criado pela Fase 1 (legado)
     ├── results/
     │   └── run_results.jsonl    # Criado pela Fase 2
     └── review_runs/
@@ -30,8 +32,7 @@ mes-pr-review-agent/
 1. Dataset `msg-test.jsonl` na raiz do projeto (já incluso no repositório).
 2. Variável de ambiente `LLM_API_KEY` configurada no `.env`.
 3. Dependências instaladas (`pydantic`, `pydantic-settings`, `httpx`).
-   - Com uv: `uv sync`
-   - Com pip:  `pip install pydantic pydantic-settings httpx`
+   - `pip install pydantic pydantic-settings httpx`
 
 ---
 
@@ -43,28 +44,32 @@ mes-pr-review-agent/
 ```powershell
 cd "...\PR-Revisor\mes-pr-review-agent"
 
-# FASE 1 — Prepara o golden dataset (30 reais + 10 sintéticos)
-python eval/phase1_data_prep.py
+# PREPARO — Gera o dataset filtrado avancado (30 reais + 10 sinteticos LGTM)
+#   Filtros: lang py|js, oldf 30-300 linhas, diff 5-30 linhas, sem triviais de estilo
+#   Enriquece com file_path, pr_title, pr_body, repo_rules
+#   Saida: eval/mes_filtered_dataset.json  (40 itens)
+python eval/build_dataset.py
 
 # FASE 2 — Executa o agente nos 40 itens (usa LLM real, ~20-40 min)
 python eval/phase2_mock_runner.py
 
-# Flags úteis na Fase 2:
-#   --dry-run         executa apenas os 3 primeiros itens (smoke test rápido)
-#   --item 5          executa apenas o item de índice 5
-#   --resume          pula runs já salvas em run_results.jsonl (retomada)
+# Flags uteis na Fase 2:
+#   --dry-run         executa apenas os 3 primeiros itens (smoke test rapido)
+#   --item 5          executa apenas o item de indice 5
+#   --resume          pula runs ja salvas em run_results.jsonl (retomada)
 
-# FASE 3 — Calcula métricas e gera tabelas LaTeX
+# FASE 3 — Calcula metricas e gera tabelas LaTeX
 python eval/phase3_metrics.py
 
-# Para listagem por item + salvar relatório completo:
+# Para listagem por item + salvar relatorio completo:
 python eval/phase3_metrics.py --qualitative --out eval/results/report.md
 ```
 
-### Usando `uv` (opcional)
+### Dataset legado (apenas Python)
 
-Se preferir isolar as dependências com `uv`, instale-o com `winget install astral-sh.uv`
-e substitua `python` por `uv run python` nos comandos acima.
+O script `eval/phase1_data_prep.py` gera `golden_dataset_mes.json` com filtro
+exclusivo para Python. Mantido para compatibilidade; **prefira `build_dataset.py`**
+para experimentos novos.
 
 ---
 
@@ -138,7 +143,7 @@ PullRequestToolContext(mock_client, owner="eval", repo="mock-repo", ...)
 | `get_diff_hunks`        | Hunks extraídos do `patch` real via `_extract_hunks()`      |
 | `read_file_at_ref(head)`| `apply_unified_diff(oldf, patch)` — arquivo pós-alteração   |
 | `read_file_at_ref(base)`| `oldf` — arquivo original antes da alteração                |
-| `read_repo_rules`       | `FileNotFoundError` → vai para `missing` (sem crash)        |
+| `read_repo_rules`       | Retorna `repo_rules` do dataset via `CONTRIBUTING.md` mock  |
 | `get_ci_status`         | `{"total_count": 0, "check_runs": []}` — sem CI             |
 
 **O que NÃO é mockado (usa a implementação real):**
